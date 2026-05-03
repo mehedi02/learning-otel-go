@@ -2,16 +2,23 @@ services:
   redis:
     image: redis:7
     container_name: user-service-redis
-    restart: always
+    restart: unless-stopped
     ports:
       - "6400:6379"
     volumes:
       - user-service-redis-data:/data
+    networks:
+      - user-service
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   user-service-db:
     image: postgres:17
     container_name: user-service-db
-    restart: always
+    restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
@@ -20,7 +27,119 @@ services:
       POSTGRES_DB: user-service
     volumes:
       - user-service-db-data:/var/lib/postgresql/data
+    networks:
+      - user-service
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d user-service"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  tempo:
+    image: grafana/tempo:2.6.0
+    container_name: user-service-tempo
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - user-service-tempo-data:/var/tempo
+    ports:
+      - "3200:3200"  # Tempo HTTP API (Grafana queries this)
+      - "4317:4317"  # OTLP gRPC ingest (traces from app)
+      - "4318:4318"  # OTLP HTTP ingest
+    networks:
+      - user-service
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: user-service-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-otlp-receiver
+      - --web.enable-lifecycle
+      - --enable-feature=otlp-write-receiver
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - user-service-prometheus-data:/prometheus
+    ports:
+      - "9090:9090"  # Prometheus UI + OTLP HTTP receiver (POST /api/v1/otlp/v1/metrics)
+    networks:
+      - user-service
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: user-service-grafana
+    restart: unless-stopped
+    ports:
+      - "4000:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - user-service-grafana-data:/var/lib/grafana
+    depends_on:
+      - tempo
+      - prometheus
+    networks:
+      - user-service
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: user-service:local
+    container_name: user-service-app
+    restart: on-failure
+    ports:
+      - "5000:5000"
+    environment:
+      # App
+      PORT: "5000"
+      # Postgres (uses container DNS, not host's localhost)
+      POSTGRES_HOST: user-service-db
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: user-service
+      # Redis (internal port 6379, NOT the host-mapped 6400)
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      # OpenTelemetry endpoints — container DNS names
+      OTEL_EXPORTER_OTLP_ENDPOINT: tempo:4317
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: prometheus:9090
+      OTEL_SERVICE_NAME: user-service
+      OTEL_SERVICE_VERSION: "0.1.0"
+      OTEL_SERVICE_ENVIRONMENT: development
+      OTEL_TRACE_SAMPLE_RATIO: "1.0"
+      OTEL_METRICS_EXPORT_INTERVAL_SEC: "15"
+    depends_on:
+      user-service-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      tempo:
+        condition: service_started
+      prometheus:
+        condition: service_started
+    networks:
+      - user-service
 
 volumes:
   user-service-db-data:
   user-service-redis-data:
+  user-service-tempo-data:
+  user-service-prometheus-data:
+  user-service-grafana-data:
+
+networks:
+  user-service:
+    driver: bridge

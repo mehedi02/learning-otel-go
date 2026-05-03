@@ -24,7 +24,7 @@ func AccessLog(log *slog.Logger) func(http.Handler) http.Handler {
 			wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 			next.ServeHTTP(wrapped, r)
 
-			log.Info("request",
+			log.InfoContext(r.Context(), "request",
 				"method", r.Method,
 				"path", r.URL.Path,
 				"status", wrapped.statusCode,

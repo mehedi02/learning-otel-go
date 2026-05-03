@@ -1,0 +1,39 @@
+# VCS and editor metadata
+.git
+.gitignore
+.gitattributes
+.vscode
+.idea
+
+# Local environment & secrets
+.env
+.env.*
+!.env.example
+
+# Build artifacts and caches
+bin/
+build/
+dist/
+tmp/
+*.exe
+*.test
+*.out
+coverage.*
+
+# Runtime data
+*.log
+
+# Tooling and infrastructure that doesn't belong in the image
+docker-compose.yaml
+docker-compose.yml
+Dockerfile
+.dockerignore
+tempo/
+grafana/
+prometheus/
+loki/
+otel-collector/
+
+# Reference / docs
+*.md
+README*

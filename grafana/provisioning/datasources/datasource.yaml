@@ -1,0 +1,34 @@
+apiVersion: 1
+
+datasources:
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    orgId: 1
+    url: http://tempo:3200
+    basicAuth: false
+    isDefault: true
+    version: 1
+    editable: true
+    jsonData:
+      tracesToMetrics:
+        datasourceUid: prometheus
+      tracesToLogs:
+        datasourceUid: prometheus
+
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://prometheus:9090
+    basicAuth: false
+    isDefault: false
+    version: 1
+    editable: true
+    jsonData:
+      timeInterval: 15s
+      # Required so Prometheus accepts metrics with native OTel attribute
+      # names (otherwise it normalizes service.name → service_name etc.).
+      httpMethod: POST

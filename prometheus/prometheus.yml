@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# OTLP-pushed metrics from the user-service flow in via the
+# --web.enable-otlp-receiver flag set in docker-compose.yaml.
+# This file declares only Prometheus's own self-scrape so the install is
+# observably alive even before any app metrics arrive.
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - "localhost:9090"
